@@ -56,6 +56,12 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
+
 import org.apache.commons.io.FileUtils;
 import org.junit.Assert;
 import org.junit.jupiter.api.AfterAll;
@@ -68,12 +74,6 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.slf4j.Logger;
-
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.google.gson.JsonPrimitive;
 
 import io.github.bonigarcia.wdm.WebDriverManager;
 import io.openvidu.load.test.browser.Browser;
@@ -112,23 +112,26 @@ public class OpenViduLoadTest {
 	public static String OPENVIDU_SECRET = "MY_SECRET";
 	public static String OPENVIDU_URL = "https://localhost:4443/";
 	public static String APP_URL = "http://localhost:8080/";
-	public static int SESSIONS = 10;
-	public static int USERS_SESSION = 7;
-	public static int SECONDS_OF_WAIT = 40;
+	public static String RECORDING_OUTPUT_MODE = "INDIVIDUAL";
+	public static int SESSIONS = 100;
+	public static int USERS_SESSION = 2;
+	public static int SECONDS_OF_WAIT = 60;
 	public static int NUMBER_OF_POLLS = 8;
 	static int BROWSER_POLL_INTERVAL = 1000;
 	public static int SERVER_POLL_INTERVAL = 5000;
 	public static String SERVER_SSH_USER = "ubuntu";
 	public static String SERVER_SSH_HOSTNAME;
 	public static String PRIVATE_KEY_PATH = "/opt/openvidu/testload/key.pem";
-	public static boolean REMOTE = false;
+	public static boolean REMOTE = true;
 	public static boolean BROWSER_INIT_AT_ONCE = false;
 	public static String RESULTS_PATH = "/opt/openvidu/testload";
 	public static boolean DOWNLOAD_OPENVIDU_LOGS = true;
 	public static int[] RECORD_BROWSERS;
 	public static JsonObject[] NETWORK_RESTRICTIONS_BROWSERS;
 	public static boolean TCPDUMP_CAPTURE_BEFORE_CONNECT;
-	public static int TCPDUMP_CAPTURE_TIME = 5;
+	public static int TCPDUMP_CAPTURE_TIME = 0;
+	public static int SESSION_AFTER_FULL_CPU = 2;
+	public static long SECONDS_WITH_ALL_SESSIONS_ACTIVE = 600;
 
 	static BrowserProvider browserProvider;
 	public static Long timeTestStarted;
@@ -148,6 +151,7 @@ public class OpenViduLoadTest {
 		String openviduUrl = System.getProperty("OPENVIDU_URL");
 		String openviduSecret = System.getProperty("OPENVIDU_SECRET");
 		String appUrl = System.getProperty("APP_URL");
+		String recordingOutputMode = System.getProperty("RECORDING_OUTPUT_MODE");
 		String sessions = System.getProperty("SESSIONS");
 		String usersSession = System.getProperty("USERS_SESSION");
 		String secondsOfWait = System.getProperty("SECONDS_OF_WAIT");
@@ -164,6 +168,9 @@ public class OpenViduLoadTest {
 		String networkRestrictionsBrowsers = System.getProperty("NETWORK_RESTRICTIONS_BROWSERS");
 		String tcpdumpCaptureBeforeConnect = System.getProperty("TCPDUMP_CAPTURE_BEFORE_CONNECT");
 		String tcpdumpCaptureTime = System.getProperty("TCPDUMP_CAPTURE_TIME");
+		String sessionAfterFullCpu = System.getProperty("SESSION_AFTER_FULL_CPU");
+		String secondsWithAllSessionsActive = System.getProperty("SECONDS_WITH_ALL_SESSIONS_ACTIVE");
+
 
 		if (openviduUrl != null) {
 			OPENVIDU_URL = openviduUrl;
@@ -173,6 +180,9 @@ public class OpenViduLoadTest {
 		}
 		if (appUrl != null) {
 			APP_URL = appUrl;
+		}
+		if (recordingOutputMode != null){
+			RECORDING_OUTPUT_MODE = recordingOutputMode;
 		}
 		if (sessions != null) {
 			SESSIONS = Integer.parseInt(sessions);
@@ -215,6 +225,12 @@ public class OpenViduLoadTest {
 		}
 		if (tcpdumpCaptureTime != null) {
 			TCPDUMP_CAPTURE_TIME = Integer.parseInt(tcpdumpCaptureTime);
+		}
+		if (sessionAfterFullCpu != null) {
+			SESSION_AFTER_FULL_CPU = Integer.parseInt(sessionAfterFullCpu);
+		}
+		if (secondsWithAllSessionsActive != null) {
+			SECONDS_WITH_ALL_SESSIONS_ACTIVE = Integer.parseInt(secondsWithAllSessionsActive);
 		}
 
 		initializeRecordBrowsersProperty(recordBrowsers);
@@ -269,7 +285,8 @@ public class OpenViduLoadTest {
 		String testInfo = "------------ TEST CONFIGURATION ----------" + System.getProperty("line.separator")
 				+ "OpenVidu URL:          " + OPENVIDU_URL + System.getProperty("line.separator")
 				+ "OpenVidu secret:       " + OPENVIDU_SECRET + System.getProperty("line.separator")
-				+ "App URL:               " + APP_URL + System.getProperty("line.separator") + "Session limit:         "
+				+ "App URL:               " + APP_URL + System.getProperty("line.separator") + "Recording Mode:         "
+				+  RECORDING_OUTPUT_MODE + System.getProperty("line.separator") + "Session limit:         "
 				+ SESSIONS + System.getProperty("line.separator") + "Users per session:     " + USERS_SESSION
 				+ System.getProperty("line.separator") + "Expected browsers:     " + SESSIONS * USERS_SESSION
 				+ System.getProperty("line.separator") + "Expected Publishers:   " + SESSIONS * USERS_SESSION
@@ -280,9 +297,11 @@ public class OpenViduLoadTest {
 				+ "Browsers networking:   " + Arrays.toString(NETWORK_RESTRICTIONS_BROWSERS)
 				+ System.getProperty("line.separator") + "Start tcpdump before connect:  "
 				+ TCPDUMP_CAPTURE_BEFORE_CONNECT + System.getProperty("line.separator") + "Tcpdump during:        "
-				+ TCPDUMP_CAPTURE_TIME + " s" + System.getProperty("line.separator") + "Is remote:             "
+				+ TCPDUMP_CAPTURE_TIME + " s" + System.getProperty("line.separator") + "Session limit after CPU is 100%: "
+				+ SESSION_AFTER_FULL_CPU + " s" + System.getProperty("line.separator") + "Is remote:             "
 				+ REMOTE + System.getProperty("line.separator") + "Results stored under:  "
-				+ OpenViduLoadTest.RESULTS_PATH + System.getProperty("line.separator")
+				+ OpenViduLoadTest.RESULTS_PATH + System.getProperty("line.separator") + "Seconds all sessions active: "
+				+ SECONDS_WITH_ALL_SESSIONS_ACTIVE + System.getProperty("line.separator")
 				+ "----------------------------------------";
 		logHelper.logTestInfo(testInfo);
 		log.info(System.getProperty("line.separator") + testInfo);
@@ -393,7 +412,7 @@ public class OpenViduLoadTest {
 		if (BROWSER_INIT_AT_ONCE) {
 			this.startSessionAllBrowsersAtOnce(1);
 		} else {
-			this.startSessionBrowserAfterBrowser(1);
+			this.startSessionBrowserAfterBrowser(1, 0);
 		}
 	}
 
@@ -402,8 +421,9 @@ public class OpenViduLoadTest {
 	 * initialization thread is in charge of running the test)
 	 **/
 
-	private void startSessionBrowserAfterBrowser(int sessionIndex) {
+	private void startSessionBrowserAfterBrowser(int sessionIndex, int sessionsAfterMaxCpu) {
 		String sessionId = "session-" + sessionIndex;
+		int actualSessionsAfterMaxCpu = sessionsAfterMaxCpu;
 		lastSession = sessionId;
 		log.info("Starting session: {}", sessionId);
 		final Collection<Runnable> threads = new ArrayList<>();
@@ -436,7 +456,14 @@ public class OpenViduLoadTest {
 		for (Runnable r : threads) {
 			browserInitializationTaskExecutor.execute(r);
 		}
-		if (sessionIndex < SESSIONS) {
+		
+		double cpuUsage = openViduServerManager.getCpuUsage();
+		log.info("CPU usage from LoadTest {}", cpuUsage);
+		if(cpuUsage > 100.0) {
+			actualSessionsAfterMaxCpu++;
+		}
+		log.info("Actual sessions afterMaxCPU: {}", actualSessionsAfterMaxCpu);
+		if (sessionIndex < SESSIONS && actualSessionsAfterMaxCpu < SESSION_AFTER_FULL_CPU) {
 			try {
 				startNewSession[0].await();
 			} catch (AbortedException e) {
@@ -447,8 +474,18 @@ public class OpenViduLoadTest {
 			startNewSession[0] = new CustomLatch(USERS_SESSION * NUMBER_OF_POLLS);
 			log.info("Stats gathering rounds threshold for session {} reached ({} rounds). Next session scheduled",
 					sessionId, NUMBER_OF_POLLS);
-			this.startSessionBrowserAfterBrowser(sessionIndex + 1);
+					
+			this.startSessionBrowserAfterBrowser(sessionIndex + 1, actualSessionsAfterMaxCpu);
 		} else {
+			
+			// Wait specified time to stop browsers
+			try {
+				log.info("Waiting {} seconds to end all sessions", SECONDS_WITH_ALL_SESSIONS_ACTIVE);
+				Thread.sleep(SECONDS_WITH_ALL_SESSIONS_ACTIVE * 1000);	
+			} catch (InterruptedException e) {
+				log.error("Can't wait for sessions to be active {} seconds", SECONDS_WITH_ALL_SESSIONS_ACTIVE);
+				e.printStackTrace();
+			}
 			log.info("Session limit succesfully reached ({})", SESSIONS);
 			lastBrowserRound.set(true);
 			try {
@@ -487,8 +524,8 @@ public class OpenViduLoadTest {
 				.networkRestriction(getNetworkRestriction(sessionIndex, userIndex)).build();
 
 		Browser browser = browserProvider.getBrowser(properties);
-		browser.getDriver().get(APP_URL + "?publicurl=" + OPENVIDU_URL + "&secret=" + OPENVIDU_SECRET + "&sessionId="
-				+ sessionId + "&userId=" + userId);
+		browser.getDriver().get(APP_URL + "?publicurl=" + OPENVIDU_URL + "&recordingmode=" + RECORDING_OUTPUT_MODE + "&secret="
+		 		 + OPENVIDU_SECRET + "&sessionId=" + sessionId + "&userId=" + userId);
 		browser.getManager().startEventPolling(userId, sessionId);
 
 		Collection<Browser> browsers = sessionIdsBrowsers.putIfAbsent(sessionId, new ArrayList<>());
@@ -531,6 +568,7 @@ public class OpenViduLoadTest {
 			startNewSession[0] = new CustomLatch(USERS_SESSION * NUMBER_OF_POLLS);
 			log.info("Stats gathering rounds threshold for session {} reached ({} rounds). Next session scheduled",
 					sessionId, NUMBER_OF_POLLS);
+					
 			this.startSessionAllBrowsersAtOnce(sessionIndex + 1);
 		} else {
 			log.info("Session limit succesfully reached ({})", SESSIONS);
@@ -606,7 +644,7 @@ public class OpenViduLoadTest {
 
 		for (Browser b : listOfBrowsers) {
 			log.info("Browser {} connecting now to {}", b.getUserId(), APP_URL);
-			b.getDriver().get(APP_URL + "?publicurl=" + OPENVIDU_URL + "&secret=" + OPENVIDU_SECRET + "&sessionId="
+			b.getDriver().get(APP_URL + "?publicurl=" + OPENVIDU_URL + "&recordingmode=" + RECORDING_OUTPUT_MODE + "&secret=" + OPENVIDU_SECRET + "&sessionId="
 					+ sessionId + "&userId=" + propertiesList.get(i).userId());
 			log.info("Browser {} is now connected to to {}", b.getUserId(), APP_URL);
 			b.getManager().startEventPolling(propertiesList.get(i).userId(), sessionId);
