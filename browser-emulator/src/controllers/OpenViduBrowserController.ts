@@ -1,5 +1,6 @@
 import * as express from 'express';
 import { Request, Response } from 'express';
+import { OpenViduRole } from 'openvidu-node-client';
 import { OpenViduBrowser } from '../openvidu-browser/openvidu-browser';
 
 export const app = express.Router({
@@ -8,47 +9,40 @@ export const app = express.Router({
 
 const ovBrowser: OpenViduBrowser = new OpenViduBrowser();
 
-app.post("/publisher", async (req: Request, res: Response) => {
+app.post("/streamManager", async (req: Request, res: Response) => {
 	try {
-		const uid = req.body.uid;
-		const sessionName = req.body.sessionName;
+		const uid: string = req.body.uid;
+		const sessionName: string = req.body.sessionName;
+		const role: string = req.body.role;
 		if(!uid || !sessionName){
-			res.status(400).send("Problem with some body parameter");
+			console.log(req.body);
+			return res.status(400).send("Problem with some body parameter");
 		}
-		await ovBrowser.createPublisher(uid, sessionName);
-		res.status(200).send('Created PUBLISHER ' +  uid + ' in session ' + sessionName);
+		if(!!role && (role === OpenViduRole.PUBLISHER || role === OpenViduRole.SUBSCRIBER)) {
+			await ovBrowser.createStreamManager(uid, sessionName, role);
+		} else {
+			return res.status(400).send("Problem with role body parameter. Must be 'PUBLISHER' or 'SUBSCRIBER'");
+		}
+		res.status(200).send('Created ' + role + ' ' +  uid + ' in session ' + sessionName);
 	} catch (error) {
 		console.log(error);
 		res.status(500).send(error);
 	}
 });
 
-app.post("/subscriber", async (req: Request, res: Response) => {
+app.delete("/streamManager", (req: Request, res: Response) => {
 	try {
-		const uid = req.body.uid;
-		const sessionName = req.body.sessionName;
-		if(!uid || !sessionName){
-			res.status(400).send("Problem with some body parameter");
-		}
-		await ovBrowser.createSubscriber(uid, sessionName);
-		res.status(200).send('Created SUBSCRIBER ' +  uid + ' in session ' + sessionName);
-	} catch (error) {
-		console.log(error);
-		res.status(500).send(error);
-	}
-});
-
-app.delete("/stream", (req: Request, res: Response) => {
-	try {
-		const uid = req.query.uid;
-		const role = req.query.role;
+		const uid: string = JSON.stringify(req.query.uid);
+		const role: any = req.query.role;
 		if(!uid && !role){
-			res.status(400).send("Problem with some query parameter");
+			return res.status(400).send("Problem with some query parameter");
 		}
 
 		if(!!uid) {
+			console.log("Deleting streams with ID: " + uid);
 			ovBrowser.deleteStreamManagerWithUid(uid);
 		} else {
+			console.log("Deleting streams with ROLES:" + role);
 			ovBrowser.deleteStreamManagerWithRole(role);
 		}
 		res.status(200).send({});

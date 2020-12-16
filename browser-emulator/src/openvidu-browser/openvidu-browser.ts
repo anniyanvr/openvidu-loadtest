@@ -11,35 +11,12 @@ export class OpenViduBrowser {
 		this.httpClient = new HttpClient();
 	}
 
-	async createPublisher(uid: string, sessionName: string): Promise<void> {
+	async createStreamManager(uid: string, sessionName: string, role: OpenViduRole): Promise<void> {
 		return new Promise(async (resolve, reject) => {
 
-			const ov = this.createAndStoreOVInstance(uid);
-			const session = this.createAndStoreSessionInstance(uid, ov);
-
-			session.on("streamCreated", (event: StreamEvent) => {
-				session.subscribe(event.stream, null);
-			});
-
-			try {
-				const token: string = await this.getToken(sessionName, OpenViduRole.PUBLISHER);
-				await session.connect(token);
-				const publisher: Publisher = ov.initPublisher(null);
-				await session.publish(publisher);
-				resolve();
-			} catch (error) {
-				console.log(
-					"There was an error connecting to the session:",
-					error.code,
-					error.message
-				);
-				reject(error);
+			if(this.sessionMap.has(uid) || this.sessionMap.has(uid)){
+				return reject('Uid is already created. Uid must be unique');
 			}
-		});
-	}
-
-	async createSubscriber(uid: string, sessionName: string): Promise<void> {
-		return new Promise(async (resolve, reject) => {
 
 			const ov = this.createAndStoreOVInstance(uid);
 			const session = this.createAndStoreSessionInstance(uid, ov);
@@ -49,8 +26,13 @@ export class OpenViduBrowser {
 			});
 
 			try {
-				const token: string = await this.getToken(sessionName, OpenViduRole.SUBSCRIBER);
+				const token: string = await this.getToken(sessionName, role);
 				await session.connect(token);
+				if(role === OpenViduRole.PUBLISHER){
+					const publisher: Publisher = ov.initPublisher(null);
+					await session.publish(publisher);
+				}
+
 				resolve();
 			} catch (error) {
 				console.log(
@@ -70,11 +52,16 @@ export class OpenViduBrowser {
 	}
 
 	deleteStreamManagerWithRole(role: OpenViduRole) {
+		const uidsToDelete = [];
 		this.sessionMap.forEach((session: Session, uid: string) => {
 			if (session.connection.role === role) {
 				session.disconnect();
-				this.deleteInstancesFromId(uid);
+				uidsToDelete.push(uid);
 			}
+		});
+
+		uidsToDelete.forEach(uid => {
+			this.deleteInstancesFromId(uid);
 		});
 	}
 
